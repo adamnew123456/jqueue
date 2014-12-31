@@ -5,7 +5,12 @@ Various Utilities
 These are various functions which don't have any direct dependency upon the
 state of the rest of the programs.
 """
-from functools import singledispatch, update_wrapper
+try:
+    from functools import singledispatch, update_wrapper
+except ImportError:
+    from functoools import update_wrapper
+    # Use the PyPI singledispatch module instead
+    from singledispatch import singledispatch
 
 def dispatchmethod(func):
     """
