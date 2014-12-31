@@ -32,12 +32,18 @@ Ok = namedtuple('Ok', [])
 Error = namedtuple('Error', ['type'])
 
 class Errors(Enum):
+    """
+    The types of errors that the protocol is capable of representing.
+    """
     NO_JOB_AVAIL = 1
     TTL_TOO_HIGH = 2
     NOT_RESERVED = 3
     DO_NOT_UNDERSTAND = 4
 
 class MessageTypes(Enum):
+    """
+    The types of messages in the protocol.
+    """
     RequestJob = 1
     Job = 2
     Ping = 3

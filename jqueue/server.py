@@ -1,5 +1,5 @@
 """
-JQueue Server
+jqueue Server
 -------------
 
 The job of the server is, when given a list of files, it will save each of those
@@ -30,7 +30,9 @@ DOWNLOAD_OFFSET_BYTESPERSEC = (1 / (250 * 1024))
 class JobDispatcher:
     """
     This keeps track of which jobs are available, and those which are currently
-    being worked on.
+    being worked on. This class's primary responsibility is to ensure that jobs
+    which are 'abandoned' (that is, their ping time expires) are returned to the
+    list of inactive jobs so they can be picked up by another client.
     """
     def __init__(self, jobs):
         self.inactive_jobs = jobs
@@ -59,7 +61,7 @@ class JobDispatcher:
             raise ValueError('The job {} is not active'.format(job))
 
         LOGGER.info('Updated timeout for job %s', job)
-        self.active_job_timeouts[job] += self.active_job_ttls[job]
+        self.active_job_timeouts[job] = time.time() + self.active_job_ttls[job]
 
     def handle_job_completion(self, job):
         """
@@ -135,7 +137,8 @@ class Server:
 
     def queue_unsent_data(self, sock, data):
         """
-        Queues up data which needs to be sent to a particular socket.
+        Queues up data which needs to be sent to a particular socket, and
+        registers the sending function to ensure that it gets sent.
         """
         self.send_buffers[sock.fileno()] = data
         self.my_reactor.bind(sock, reactor.WRITABLE, self.handle_unsent_data)
@@ -166,8 +169,8 @@ class Server:
 
     def handle_unsent_data(self, fd_event):
         """
-        Sends any unsent data across the socket it is intended for, closing
-        the socket if all the data has been sent.
+        Sends any unsent data across a socket, closing the socket if all the 
+        data has been sent.
         """
         fd, event = fd_event
         sock = self.clients[fd]
@@ -185,12 +188,8 @@ class Server:
 
     def handle_data(self, fd_event):
         """
-        Handles incoming data from a client.
-
-        Note that this can:
-
-         - Close a client if malformed data (or no data at all) is received
-         - Handle a message/messages if any are ready after receiving the data
+        Handles incoming data from a client, chunking it into messages and
+        passing them onto the message handler.
         """
         fd, event = fd_event
         client_sock = self.clients[fd]
@@ -211,10 +210,12 @@ class Server:
                         break
 
                 if fd in self.client_buffers:
+                    # It may be that the socket is closed now, since they are
+                    # discarded after a single request
                     LOGGER.info('%d bytes unprocessed', len(self.client_buffers[fd]))
                     self.client_buffers[fd] = client_buff
             except ValueError as exn:
-                # If we get any malformed data, then kill the connection
+                # If we get any malformed data, kill the connection
                 LOGGER.exception(exn)
                 self.close_client(client_sock)
 
@@ -276,6 +277,10 @@ class Server:
 
     @handle_message.register(protocol.SubmitResult)
     def _(self, message, client):
+        """
+        Results can either be ignored, or accepted and written to the result
+        file.
+        """
         LOGGER.info('Got result for %s with %d bytes', message.id, len(message.data))
 
         try:

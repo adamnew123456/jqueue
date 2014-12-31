@@ -4,6 +4,18 @@ jqueue Client
 
 This forms the infrastructure needed to run the client, which is essentially
 a thread which is in communication with the server.
+
+The main class here is ``ClientThread``, which is generally used as follows::
+
+    >>> client_handler = ClientThread()
+    >>> client_handler.start()
+    >>> while True:
+    ...     job = client_handler.get_job()
+    ...     if job is None:
+    ...         break
+    ...     result = process(job.data)
+    ...     client_handler.submit_result(result)
+    ...
 """
 from collections import namedtuple
 import queue
@@ -15,6 +27,17 @@ from jqueue import protocol, utils
 RECV_SIZE = 1024 * 1024
 
 class ClientThread(threading.Thread):
+    """
+    Acts as a bridge between a program which processes jqueue jobs, and the
+    jqueue server.
+
+    This takes care of acquiring a job from the server, keeping it alive so
+    that the program can continue to work on it, and finally submitting
+    results back to the server.
+    """
+
+    # These are the different types of messages which can be exchanged between
+    # the main thread and the client thread:
     Get = namedtuple('Get', ['ttl'])
     Job = namedtuple('Job', ['data'])
     Submit = namedtuple('Submit', ['data'])
@@ -23,9 +46,11 @@ class ClientThread(threading.Thread):
     def __init__(self, host, port=2267, **kwargs):
         kwargs.update({'name': 'ClientThread'})
         threading.Thread.__init__(self, **kwargs)
-        self.server_host = host
-        self.server_port = port
+
         self.has_started = threading.Event()
+        self.server = (host, port)
+        self.actions = queue.Queue()
+        self.results = queue.Queue()
 
     def has_job(self):
         """
@@ -38,6 +63,11 @@ class ClientThread(threading.Thread):
         """
         Submits a request to get a new job - note that this only works if
         no current job is running.
+
+        :param int ttl: How long to wait before sending a ping to the server.
+            Note that, in high workloads, this should be higher (30 seconds is
+            the current maximum) to avoid robbing the main thread of the ability
+            to do work.
         """
         self.actions.put(ClientThread.Get(ttl))
         return self.results.get()
@@ -45,6 +75,8 @@ class ClientThread(threading.Thread):
     def submit_result(self, data):
         """
         Submits the currently outstanding job to the server.
+
+        :param bytes data: The raw data to submit.
         """
         self.actions.put(ClientThread.Submit(data))
 
@@ -82,7 +114,6 @@ class ClientThread(threading.Thread):
             if not chunk:
                 break
             response_bytes += chunk
-            print(':::', len(response_bytes), 'bytes')
 
         response, _ = protocol.message_from_bytes(response_bytes)
         return response
@@ -97,6 +128,7 @@ class ClientThread(threading.Thread):
 
         sock = self.get_server_connection()
         if sock is None:
+            # If the server is gone, than there's nothing we can do
             self.current_job = None
             self.current_job_ttl = None
             return
@@ -139,6 +171,9 @@ class ClientThread(threading.Thread):
 
     @handle_request.register(Submit)
     def _(self, message):
+        """
+        Tries to send data back to the server as a result to the current job.
+        """
         if self.current_job is None:
             return
 
@@ -155,6 +190,10 @@ class ClientThread(threading.Thread):
 
     @handle_request.register(Quit)
     def _(self, message):
+        """
+        The main loop in ``ClientThread.run`` expects a truthy return value
+        from the handler to indicate that it (the main loop) should exit.
+        """
         return True
 
     def run(self):
@@ -166,10 +205,6 @@ class ClientThread(threading.Thread):
           dropped.
         - Sending the result back to the server.
         """
-        self.server = (self.server_host, self.server_port)
-        self.actions = queue.Queue()
-        self.results = queue.Queue()
-
         self.current_job = None
         self.current_job_ttl = None
 
@@ -181,6 +216,9 @@ class ClientThread(threading.Thread):
                 is_done = self.handle_request(request)
             else:
                 try:
+                    # The reasoning behind halving the TTL to get our ping time,
+                    # is that we leave ourselves a 'safety zone' in case this
+                    # thread doesn't get run exactly after the timeout expires
                     request = self.actions.get(timeout=self.current_job_ttl // 2)
                     is_done = self.handle_request(request)
                 except queue.Empty:
