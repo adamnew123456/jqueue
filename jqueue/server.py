@@ -265,11 +265,11 @@ class Server:
         LOGGER.info('Got ping: %s', message)
 
         try:
-            LOGGER.info('|| No such job')
             self.job_dispatcher.handle_job_ping(message.id)
             raw_message = protocol.serialize(protocol.Ok())
-        except ValueError:
             LOGGER.info('|| Ping successful')
+        except ValueError:
+            LOGGER.info('|| No such job')
             raw_message = protocol.serialize(
                 protocol.Error(protocol.Errors.NOT_RESERVED))
 
