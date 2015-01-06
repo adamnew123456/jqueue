@@ -7,7 +7,7 @@ import tempfile
 import threading
 import time
 
-from jqueue import client, server
+from jqueue import quickstart, server
 
 # These are the names of the jobs, as well as their content
 IN_FILES = {
@@ -28,22 +28,10 @@ def server_thread_runner():
     svr.run([fname.encode('ascii') for fname in IN_FILES])
 
 def client_thread_runner():
-    handler_thread = client.ClientThread('localhost')
-    handler_thread.start()
+    def handler(data):
+        return data.upper()
 
-    svr.server_launched.wait()
-    handler_thread.has_started.wait()
-
-    while True:
-        job = handler_thread.get_job(5)
-        if job is None:
-            break
-
-        result = job.data.upper()
-        handler_thread.submit_result(result)
-
-    handler_thread.terminate()
-    handler_thread.join()
+    quickstart.process_jobs('localhost', handler, ttl=5)
 
 with tempfile.TemporaryDirectory() as tmpdir:
     os.chdir(tmpdir)
