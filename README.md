@@ -45,9 +45,8 @@ code. Typically, they will have the following pattern:
 
         quickstart.process_jobs(server, handler)
 
-The `ClientThread` takes care of the interaction with the server, and thus
-makes it simple to write job processors, reducing them all to a simple
-template like the above.
+The `jqueue.quickstart` module provides the helper function `process_jobs`, 
+which makes it simple to process jobs.
 
 ## Example
 
@@ -72,10 +71,9 @@ The client uses ``ffmpeg`` to encode them:
             wav_in = tempfile.mktemp(suffix='.wav')
             mp3_out = tempfile.mktemp(suffix='.mp3')
             with open(wav_in, 'wb') as in_stream:
-                in_stream.write(job.data)
+                in_stream.write(wav_data)
 
             os.system('ffmpeg "{}" "{}"'.format(wav_in, mp3_out))
-
             with open(mp3_out, 'rb') as out_stream:
                 mp3_data = out_stream.read()
 
