@@ -37,23 +37,13 @@ ignored unless something goes wrong), until all the jobs have been processed.
 Unlike the shrink-wrapped server program, clients have to be written as Python
 code. Typically, they will have the following pattern:
 
-    from jqueue import client
+    from jqueue import quickstart
 
     if __name__ == '__main__':
-        handler_thread = client.ClientThread(server)
-        handler_thread.start()
+        def handler(job_data):
+            return get_result_from_input(job_data)
 
-        while True:
-            job = handler_thread.get_job(...)
-            if job is None:
-                break
-
-            data = job.data
-            result = get_result_from_input(data)
-            handler_thread.submit_result(result)
-
-        handler_thread.terminate()
-        handler_thread.join()
+        quickstart.process_jobs(server, handler)
 
 The `ClientThread` takes care of the interaction with the server, and thus
 makes it simple to write job processors, reducing them all to a simple
@@ -73,19 +63,12 @@ The client uses ``ffmpeg`` to encode them:
     import os
     import tempfile
 
-    from jqueue import client
+    from jqueue import quickstart
 
     SERVER = 'server.hostname'
 
     if __name__ == '__main__':
-        handler_thread = client.ClientThread(SERVER)
-        handler_thread.start()
-
-        while True:
-            job = handler_thread.get_job(...)
-            if job is None:
-                break
-
+        def handler(wav_data):
             wav_in = tempfile.mktemp(suffix='.wav')
             mp3_out = tempfile.mktemp(suffix='.mp3')
             with open(wav_in, 'wb') as in_stream:
@@ -95,10 +78,12 @@ The client uses ``ffmpeg`` to encode them:
 
             with open(mp3_out, 'rb') as out_stream:
                 mp3_data = out_stream.read()
-            handler_thread.submit_result(mp3_data)
 
-        handler_thread.terminate()
-        handler_thread.join()
+            os.remove(wav_in)
+            os.remove(mp3_out)
+            return mp3_data
+
+        quickstart.process_jobs(SERVER, handler)
 
 At this point, run the server:
 
