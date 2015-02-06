@@ -8,7 +8,7 @@ setup(
         ['jqueue-server = jqueue.cli:runner']
     },
     author='Adam Marchetti',
-    version='0.1.1',
+    version='0.1.2',
     description='A queue for distributed job processing',
     author_email='adamnew123456@gmail.com',
     keywords=['networking'],

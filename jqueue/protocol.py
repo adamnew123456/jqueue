@@ -19,8 +19,12 @@ These types of messages are:
 """
 from collections import namedtuple
 from enum import Enum
-from functools import singledispatch
 import struct
+
+try:
+    from functools import singledispatch
+except ImportError:
+    from singledispatch import singledispatch
 
 from jqueue import utils
 
